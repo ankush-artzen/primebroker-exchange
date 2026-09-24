@@ -9,7 +9,7 @@ import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { formErrorBanner } from "@/lib/form-errors";
 import { LeadForm } from "./LeadForm";
 import { ButtonLoader } from "@/components/Loader";
-import { Mic, X } from "lucide-react";
+import { Mic, MicOff, Pencil, RotateCcw, X } from "lucide-react";
 import { Modal } from "./Modal";
 import { cn } from "@/lib/utils";
 
@@ -66,6 +66,7 @@ export function VoiceLeadCapture({
   const [error, setError] = useState("");
   const [showVoiceHint, setShowVoiceHint] = useState(false);
   const [parseStatus, setParseStatus] = useState("Tap and describe the lead");
+  const [editingSpeech, setEditingSpeech] = useState(false);
 
   const { transcript, listening, supported, start, stop, setTranscript } =
     useSpeechRecognition(language);
@@ -84,6 +85,7 @@ export function VoiceLeadCapture({
       setFormInitial({});
       setFormKey((k) => k + 1);
       setError("");
+      setEditingSpeech(false);
       setTranscript();
       setParseStatus("Tap and describe the lead");
     }
@@ -129,6 +131,25 @@ export function VoiceLeadCapture({
     } finally {
       setParsing(false);
     }
+  };
+
+  const turnMicOff = () => {
+    setTranscript(transcript);
+    stop();
+  };
+
+  const turnMicOn = () => {
+    setEditingSpeech(false);
+    start();
+  };
+
+  const resetVoice = () => {
+    setEditingSpeech(false);
+    setError("");
+    setFormInitial({});
+    setFormKey((k) => k + 1);
+    setParseStatus("Listening… speak again");
+    start({ fresh: true });
   };
 
   const handleCancel = () => {
@@ -236,7 +257,7 @@ export function VoiceLeadCapture({
           <>
             <button
               type="button"
-              onClick={() => (listening ? stop() : start())}
+              onClick={() => (listening ? turnMicOff() : turnMicOn())}
               disabled={!supported}
               className={cn(
                 "relative mx-auto flex h-20 w-20 items-center justify-center rounded-full text-primary-foreground shadow-lg transition-colors",
@@ -251,13 +272,87 @@ export function VoiceLeadCapture({
               <Mic size={28} strokeWidth={1.75} />
             </button>
             <p className="mt-3.5 text-[13px] font-medium text-primary">
-              {listening ? "Listening… tap to stop" : parseStatus}
+              {listening
+                ? "Listening… mic is on"
+                : transcript
+                  ? "Mic is off"
+                  : parseStatus}
             </p>
-            <p className="mt-1 min-h-[16px] px-1.5 text-xs italic text-[#8a8578]">
-              {transcript ||
-                (supported ? "" : "Voice not supported in this browser")}
-            </p>
-            {supported && transcript && (
+            {supported && (
+              <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => (listening ? turnMicOff() : turnMicOn())}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[12.5px] font-semibold transition-colors",
+                    listening
+                      ? "border-overdue bg-overdue text-white"
+                      : "border-primary bg-primary text-primary-foreground",
+                  )}
+                >
+                  {listening ? <MicOff size={14} /> : <Mic size={14} />}
+                  {listening ? "Mic off" : "Mic on"}
+                </button>
+                <button
+                  type="button"
+                  onClick={resetVoice}
+                  disabled={parsing}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#e4d3b4] bg-surface px-3.5 py-1.5 text-[12.5px] font-semibold text-muted transition-colors disabled:opacity-50"
+                >
+                  <RotateCcw size={14} />
+                  Reset
+                </button>
+              </div>
+            )}
+            {!supported && (
+              <p className="mt-1 px-1.5 text-xs italic text-[#8a8578]">
+                Voice not supported in this browser
+              </p>
+            )}
+            {supported && (listening || transcript || editingSpeech) && (
+              <div className="mt-4 text-left">
+                <div className="mb-1.5 flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-muted">
+                    What you said
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (editingSpeech) {
+                        setEditingSpeech(false);
+                        return;
+                      }
+                      stop();
+                      setTranscript(transcript);
+                      setEditingSpeech(true);
+                    }}
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-secondary-dark underline"
+                  >
+                    <Pencil size={12} />
+                    {editingSpeech ? "Done" : "Edit"}
+                  </button>
+                </div>
+                {editingSpeech ? (
+                  <textarea
+                    value={transcript}
+                    onChange={(e) => setTranscript(e.target.value)}
+                    rows={3}
+                    autoFocus
+                    placeholder="Edit the words from your voice note"
+                    className="w-full rounded-[10px] border border-border bg-surface px-3 py-2.5 text-sm text-primary outline-none focus:border-primary"
+                  />
+                ) : (
+                  <p className="min-h-[44px] rounded-[10px] border border-border bg-surface px-3 py-2.5 text-left text-sm leading-relaxed text-primary">
+                    {transcript || (
+                      <span className="italic text-[#8a8578]">
+                        Your words will appear here…
+                      </span>
+                    )}
+                  </p>
+                )}
+              </div>
+            )}
+            {supported && transcript.trim() && (
               <button
                 type="button"
                 disabled={parsing}
@@ -271,6 +366,7 @@ export function VoiceLeadCapture({
               type="button"
               onClick={() => {
                 stop();
+                setEditingSpeech(false);
                 setShowTypeFallback(true);
               }}
               className="mt-3 block w-full text-xs text-secondary-dark underline"

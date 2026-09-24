@@ -86,6 +86,8 @@ export function useSpeechRecognition(language: SpeechLanguage) {
   const sessionBaseRef = useRef("");
   const listeningRef = useRef(false);
   const stoppingRef = useRef(false);
+  const manualEditRef = useRef(false);
+  const pendingStartRef = useRef<{ fresh: boolean } | null>(null);
 
   useEffect(() => {
     const SpeechRecognition =
@@ -103,6 +105,8 @@ export function useSpeechRecognition(language: SpeechLanguage) {
     recognition.lang = language;
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
+      if (manualEditRef.current) return;
+
       let sessionFinal = "";
       let interim = "";
 
@@ -128,6 +132,7 @@ export function useSpeechRecognition(language: SpeechLanguage) {
     };
 
     recognition.onerror = (event) => {
+      if (pendingStartRef.current) return;
       // "no-speech" / "aborted" are common on mobile; don't treat as hard stop
       // unless the user intentionally stopped.
       if (event?.error === "aborted" || stoppingRef.current) {
@@ -143,6 +148,29 @@ export function useSpeechRecognition(language: SpeechLanguage) {
     };
 
     recognition.onend = () => {
+      const pending = pendingStartRef.current;
+      if (pending) {
+        pendingStartRef.current = null;
+        stoppingRef.current = false;
+        manualEditRef.current = false;
+        if (pending.fresh) {
+          finalTranscriptRef.current = "";
+          sessionBaseRef.current = "";
+          setTranscript("");
+        } else {
+          sessionBaseRef.current = finalTranscriptRef.current;
+        }
+        listeningRef.current = true;
+        setListening(true);
+        try {
+          recognition.start();
+        } catch {
+          listeningRef.current = false;
+          setListening(false);
+        }
+        return;
+      }
+
       // Mobile (continuous:false): keep listening by restarting until user stops
       if (listeningRef.current && !stoppingRef.current && touch) {
         sessionBaseRef.current = finalTranscriptRef.current;
@@ -160,6 +188,7 @@ export function useSpeechRecognition(language: SpeechLanguage) {
     recognitionRef.current = recognition;
 
     return () => {
+      pendingStartRef.current = null;
       stoppingRef.current = true;
       listeningRef.current = false;
       recognition.onresult = null;
@@ -174,19 +203,44 @@ export function useSpeechRecognition(language: SpeechLanguage) {
     };
   }, [language]);
 
-  const start = useCallback(() => {
-    if (!recognitionRef.current) return;
-    stoppingRef.current = false;
-    finalTranscriptRef.current = "";
-    sessionBaseRef.current = "";
-    setTranscript("");
-    listeningRef.current = true;
-    setListening(true);
+  const start = useCallback((options?: { fresh?: boolean }) => {
+    const recognition = recognitionRef.current;
+    if (!recognition) return;
+    const fresh = options?.fresh ?? false;
+    const wasListening = listeningRef.current;
+
+    const arm = () => {
+      stoppingRef.current = false;
+      manualEditRef.current = false;
+      if (fresh) {
+        finalTranscriptRef.current = "";
+        sessionBaseRef.current = "";
+        setTranscript("");
+      } else {
+        sessionBaseRef.current = finalTranscriptRef.current;
+      }
+      listeningRef.current = true;
+      setListening(true);
+    };
+
+    arm();
     try {
-      recognitionRef.current.start();
+      recognition.start();
     } catch {
-      listeningRef.current = false;
-      setListening(false);
+      if (!wasListening) {
+        listeningRef.current = false;
+        setListening(false);
+        return;
+      }
+      pendingStartRef.current = { fresh };
+      stoppingRef.current = true;
+      try {
+        recognition.stop();
+      } catch {
+        pendingStartRef.current = null;
+        listeningRef.current = false;
+        setListening(false);
+      }
     }
   }, []);
 
@@ -201,10 +255,19 @@ export function useSpeechRecognition(language: SpeechLanguage) {
     setListening(false);
   }, []);
 
-  const clearTranscript = useCallback(() => {
-    finalTranscriptRef.current = "";
-    sessionBaseRef.current = "";
-    setTranscript("");
+  const setTranscriptText = useCallback((value?: string) => {
+    if (value === undefined) {
+      manualEditRef.current = false;
+      finalTranscriptRef.current = "";
+      sessionBaseRef.current = "";
+      setTranscript("");
+      return;
+    }
+
+    manualEditRef.current = true;
+    finalTranscriptRef.current = value;
+    sessionBaseRef.current = value;
+    setTranscript(value);
   }, []);
 
   return {
@@ -213,6 +276,6 @@ export function useSpeechRecognition(language: SpeechLanguage) {
     supported,
     start,
     stop,
-    setTranscript: clearTranscript,
+    setTranscript: setTranscriptText,
   };
 }

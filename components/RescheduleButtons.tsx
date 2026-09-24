@@ -17,7 +17,6 @@ export function RescheduleButtons({
   const options = [
     { label: "Tomorrow", days: 1 },
     { label: "3 days", days: 3 },
-    { label: "1 week", days: 7 },
   ];
 
   return (
