@@ -2,7 +2,13 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   // Allow ngrok (and similar tunnels) to load dev assets in the browser
-  allowedDevOrigins: ["*.ngrok-free.dev", "*.ngrok-free.app", "*.ngrok.io"],
+  allowedDevOrigins: [
+    "127.0.0.1",
+    "localhost",
+    "*.ngrok-free.dev",
+    "*.ngrok-free.app",
+    "*.ngrok.io",
+  ],
   turbopack: {
     root: ".",
   },
